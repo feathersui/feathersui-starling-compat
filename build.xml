@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project name="feathers-compat" default="swc" basedir=".">
+	
+	<!-- build.local.properties and sdk.local.proprties are optional files that
+		can be used to override the default properties. -->
+	<property file="./sdk.local.properties"/>
+	<property file="./sdk.properties"/>
+	<property file="./build.local.properties"/>
+	<property file="./build.properties"/>
+	<taskdef resource="flexUnitTasks.tasks" classpath="${flexunit}"/>
+
+	<target name="swc" depends="-swc,-cleanup" description="builds feathers-compat.swc only"/>
+
+	<target name="api" depends="-api,-cleanup" description="builds API reference only"/>
+
+	<target name="test" depends="-test,-cleanup" description="runs unit tests"/>
+
+	<target name="full" depends="-swc,-test,-api,-includes,-cleanup" description="builds everything">
+
+		<!-- move feathers.swc to its final location for distribution.
+			basically, we didn't want the extra swc directory for a quick build. -->
+
+		<copy overwrite="true" todir="${swc.output}">
+			<fileset dir="${output.path}">
+				<include name="feathers.swc"/>
+			</fileset>
+		</copy>
+		<delete file="${output.path}/feathers.swc"/>
+	</target>
+
+	<target name="package" depends="full" description="builds everything and creates a zip file for distribution">
+		<zip destfile="${output.path}/feathers-compat-${feathers.compat.version}.zip">
+			<zipfileset dir="${output.path}"/>
+		</zip>
+
+		<delete includeemptydirs="true">
+			<fileset dir="${output.path}" excludes="feathers-compat-${feathers.compat.version}.zip"/>
+		</delete>
+	</target>
+
+	<target name="-prepare">
+		<delete dir="${output.path}"/>
+	</target>
+
+	<target name="-cleanup">
+		<delete dir="${dependency.output}"/>
+	</target>
+
+	<target name="-starling" depends="-prepare">
+		<echo message="Building starling.swc"/>
+		<java jar="${compc}" dir="${starling.root}" fork="true" failonerror="true">
+			<arg value="-load-config=${airsdk.config}"/>
+			<arg value="-swf-version=${swf.version}"/>
+			<arg value="-source-path+=."/>
+			<arg value="-include-sources+=."/>
+			<arg value="-output=${dependency.output}/starling.swc"/>
+		</java>
+	</target>
+
+	<target name="-feathers" depends="-starling">
+		<echo message="Building feathers.swc"/>
+		<java jar="${compc}" dir="${feathers.root}" fork="true" failonerror="true">
+			<arg value="-load-config=${airsdk.config}"/>
+			<arg value="-swf-version=${swf.version}"/>
+			<arg value="-source-path+=source"/>
+			<arg value="-include-sources+=source"/>
+			<arg value="-external-library-path+=${dependency.output}"/>
+			<arg value="-output=${dependency.output}/feathers.swc"/>
+		</java>
+	</target>
+
+	<target name="-dependencies" depends="-starling,-feathers"/>
+
+	<target name="-swc" depends="-dependencies">
+		<echo message="Building feathers-compat.swc"/>
+		<java jar="${compc}" dir="${basedir}" fork="true" failonerror="true">
+			<arg value="-load-config=${airsdk.config}"/>
+			<arg value="-swf-version=${swf.version}"/>
+			<arg value="-source-path+=${source.root}"/>
+			<arg value="-include-sources+=${source.root}"/>
+			<arg value="-external-library-path+=${dependency.output}"/>
+			<arg value="-output=${output.path}/feathers-compat.swc"/>
+		</java>
+	</target>
+
+	<target name="-api" depends="-dependencies">
+		<echo message="Generating API Reference"/>
+		<java jar="${asdoc}" dir="${basedir}" fork="true" failonerror="true">
+			<arg value="+flexlib=${airsdk.framework}"/>
+			<arg value="-swf-version=${swf.version}"/>
+			<arg value="-source-path+=${source.root}"/>
+			<arg value="-library-path+=${dependency.output}"/>
+			<arg value="-doc-sources+=${source.root}"/>
+
+			<!-- these two arguments are needed after switching to the AIR SDK
+				with ASC 2.0 to stop weird errors -->
+			<arg value="-theme="/>
+			<arg value="-compiler.fonts.local-fonts-snapshot="/>
+
+			<arg value="-templates-path"/>
+			<arg value="${api.root}/templates"/>
+			<arg value="-main-title=feathers-compat ${feathers.compat.version} API Reference"/>
+			<arg value="-window-title=feathers-compat API Reference"/>
+			<arg value="-footer=${footer.text}"/>
+			<arg value="-output=${api.output}"/>
+		</java>
+	</target>
+
+	<target name="-includes">
+		<echo message="Copying feathers-compat source code"/>
+		<copy overwrite="true" todir="${source.output}">
+			<fileset dir="${source.root}"/>
+		</copy>
+				
+		<echo message="Copying informational documents"/>
+		<copy overwrite="true" todir="${output.path}">
+			<fileset dir="${basedir}">
+				<include name="README.md"/>
+				<include name="LICENSE.md"/>
+				<include name="RELEASENOTES.md"/>
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="-test" depends="-swc">
+		<java jar="${mxmlc}" dir="${test.root}/source" fork="true" failonerror="true">
+			<arg value="-load-config=${airsdk.config}"/>
+			<arg value="-swf-version=${swf.version}"/>
+			<arg value="-library-path+=${dependency.output}"/>
+			<arg value="-library-path+=${flexunit.root}"/>
+			<arg value="-library-path+=${output.path}"/>
+			<arg value="-output=${dependency.output}/TestFeathersCompat.swf"/>
+			<arg value="TestFeathersCompat.as"/>
+		</java>
+		<flexunit
+			command="${flashplayer}"
+			player="flash"
+			swf="${dependency.output}/TestFeathersCompat.swf"
+			haltonfailure="true"
+			verbose="true"
+			toDir="${dependency.output}"/>
+	</target>
+</project>
